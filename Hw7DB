@@ -1,0 +1,159 @@
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+
+namespace EF_core_DZ_07
+{
+    public class MovieContext : DbContext
+    {
+        public DbSet<Director> Directors { get; set; }
+        public DbSet<Movie> Movies { get; set; }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlite("Data Source=Movies.db");
+        }
+    }
+
+    public class Director
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int BirthYear { get; set; }
+
+        public List<Movie> Movies { get; set; } = new();
+    }
+
+    public class Movie
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public int Year { get; set; }
+
+        public int DirectorId { get; set; }
+        public Director Director { get; set; }
+    }
+
+    public class JsonData
+    {
+        public List<JsonDirector> Directors { get; set; } = new();
+        public List<JsonMovie> Movies { get; set; } = new();
+    }
+
+    public class JsonDirector
+    {
+        public string Name { get; set; } = string.Empty;
+        public int BirthYear { get; set; }
+    }
+
+    public class JsonMovie
+    {
+        public string Title { get; set; } = string.Empty;
+        public int Year { get; set; }
+        public string Director { get; set; } = string.Empty;
+    }
+
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            string json = File.ReadAllText("movies.json");
+
+            JsonData data = JsonSerializer.Deserialize<JsonData>(json,new JsonSerializerOptions{PropertyNameCaseInsensitive = true});
+
+            using var context = new MovieContext();
+
+            context.Database.EnsureDeleted();
+            context.Database.EnsureCreated();
+
+            foreach (var jsonDirector in data.Directors)
+            {
+                Director director = new Director();
+
+                director.Name = jsonDirector.Name;
+                director.BirthYear = jsonDirector.BirthYear;
+
+                context.Directors.Add(director);
+            }
+
+            context.SaveChanges();
+
+            foreach (var jsonMovie in data.Movies)
+            {
+                Director director = context.Directors
+                    .First(d => d.Name == jsonMovie.Director);
+
+                Movie movie = new Movie();
+
+                movie.Title = jsonMovie.Title;
+                movie.Year = jsonMovie.Year;
+                movie.DirectorId = director.Id;
+
+                context.Movies.Add(movie);
+            }
+
+            context.SaveChanges();
+
+            Console.WriteLine("LINQ 1");
+
+            var result1 = context.Movies
+                .Where(m => m.Year >= 2000)
+                .ToList();
+
+            foreach (var movie in result1)
+            {
+                Console.WriteLine($"{movie.Title} - {movie.Year}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("LINQ 2");
+
+            var result2 = context.Directors
+                .Where(d => d.BirthYear < 1970)
+                .ToList();
+
+            foreach (var director in result2)
+            {
+                Console.WriteLine($"{director.Name} - {director.BirthYear}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("LINQ 3");
+
+            var result3 = context.Movies
+                .Include(m => m.Director)
+                .Where(m => m.Director.Name == "Christopher Nolan")
+                .ToList();
+
+            foreach (var movie in result3)
+            {
+                Console.WriteLine($"{movie.Title} - {movie.Director.Name}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("SQL 1");
+
+            var result4 = context.Movies
+                .FromSqlRaw("SELECT * FROM Movies WHERE Year > 2010")
+                .ToList();
+
+            foreach (var movie in result4)
+            {
+                Console.WriteLine($"{movie.Title} - {movie.Year}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("SQL 2");
+
+            var result5 = context.Directors
+                .FromSqlRaw("SELECT * FROM Directors WHERE BirthYear < 1980")
+                .ToList();
+
+            foreach (var director in result5)
+            {
+                Console.WriteLine($"{director.Name} - {director.BirthYear}");
+            }
+
+            Console.ReadLine();
+        }
+    }
+}
